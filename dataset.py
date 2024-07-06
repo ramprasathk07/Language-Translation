@@ -15,7 +15,7 @@ import torch.nn as nn
 
 
 import yaml
-with open('/kaggle/working/config.yaml') as f:
+with open('config.yaml') as f:
     config = yaml.safe_load(f)
 
 from torch.utils.data import Dataset,random_split
@@ -122,7 +122,7 @@ def get_or_build_tokenizer(config,ds,lang):
         tokenizer  = Tokenizer(WordLevel(unk_token="[UNK]"))
         tokenizer.pre_tokenizer = Whitespace()
 
-        trainer = WordLevelTrainer(special_token = ["[UNK]","[PAD]","[SOS]","[EOS]"],min_frequency = 2)
+        trainer = WordLevelTrainer(special_tokens = ["[UNK]","[PAD]","[SOS]","[EOS]"],min_frequency = 2)
 
         tokenizer.train_from_iterator(get_all_sentences(ds,lang),trainer = trainer)
 
@@ -132,13 +132,13 @@ def get_or_build_tokenizer(config,ds,lang):
     return tokenizer
 
 
-dataset = load_dataset("open_subtitles",lang1=config['lang_src'],lang2=config['lang_tgt'],split= 'train')
-dataset['translation'][:5]
+# dataset = load_dataset("open_subtitles",lang1=config['lang_src'],lang2=config['lang_tgt'],split= 'val',trust_remote_code=True)
+# dataset['translation'][:5]
 
 
 def get_data(config):
     
-    dataset = load_dataset("open_subtitles",lang1=config['lang_src'],lang2=config['lang_tgt'],split= 'train')
+    dataset = load_dataset("open_subtitles",lang1=config['lang_src'],lang2=config['lang_tgt'],split= 'train',streaming=True)
      
     tok_src =  get_or_build_tokenizer(config,dataset,config['lang_src'])
     tok_tgt =  get_or_build_tokenizer(config,dataset,config['lang_tgt'])

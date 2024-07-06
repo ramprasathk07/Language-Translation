@@ -51,5 +51,39 @@ def train(config):
             encoder_mask = batch['encoder_mask'].to(device)   #(B,1,1,seq_len)
             decoder_mask = batch['decoder_mask'].to(device)   #(B,1,seq_len,seq_len)
 
+            encoder_out = model.encode(encoder_inp,encoder_mask) #B,seq_len,d_model
+
+            decoder_out = model.decode(encoder_out,encoder_mask,decoder_inp,decoder_mask) #B,seq_len,d_model
+
+            proj_out = model.project(decoder_out) #B,vocab_tgt
+
+            label = batch['label'].to(device)
+
+            loss = loss_fn(proj_out.view(-1,token_tgt.get_vocab_size()),label)
+
+            batch_iterator.set_postfix({f"Loss:":f"{loss.item():6.3f}"})
+
+            writer.add_scalar('train_loass',loss.item(),global_step)
+            writer.flush()
+
+            loss.backward()
+
+            optimizer.step()
+            optimizer.zero_grad()
+            global_step += 1
+
+    model_filename = get_weights_file_path(config,f'{epoch:02d}')
+    torch.save({
+        'epoch':epoch,
+        'model_state_dict':model.state_dict(),
+        'optimizer_state_dict':optimizer.state_dict(),
+        'global_step':global_step
+    },model_filename)
+
             
 
+if __name__ =='__main__':
+    with open('config.yaml','rb') as f:
+        onfig = yaml.safe_load(f)
+
+    train(config=config)
