@@ -11,51 +11,95 @@ class InputEmbeddings(nn.Module):
         self.embedding = nn.Embedding(vocab_size,d_model)
 
     def forward(self,x):
-        x = self.embedding(x)
+        x = self.embedding(x.long())
         return (x * math.sqrt(self.d_model))
     
-class PositionalEncoding(nn.Module):
-    def __init__(self,
-                d_model:int,
-                seq_len:int,
-                dropout:float)->None:
-        super().__init__()
+# class PositionalEncoding(nn.Module):
+#     def __init__(self,
+#                 d_model:int,
+#                 seq_len:int,
+#                 dropout:float)->None:
+#         super().__init__()
 
+#         self.d_model = d_model
+#         self.seq_len = seq_len
+#         self.dropout = nn.Dropout(dropout)
+#         # need pos embeddings of (seq_len,d_model)
+
+#         pe = torch.zeros(seq_len,d_model)
+
+#         pos = torch.arange(0,seq_len,dtype = torch.float).unsqueeze(1)
+        
+#         div = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+
+#         pe[:,0::2] = torch.sin(pos*div)
+#         pe[:,1::2] = torch.cos(pos*div)
+#         # print(f"\n PE:{pe}\n")
+#         pe = pe.unsqueeze(0) #(1,seq_len,d_model)
+#         self.register_buffer('pe',pe)
+#         print(f"Positional Encoding (PE) shape: {pe.shape}")
+
+#     # def forward(self,x):
+#     #     x = x + (self.pe[:,:x.shape[1],:]).requires_grad_(False)
+#     #     x = self.dropout(x)
+#     #     return x
+#     def forward(self, x):
+#         # Ensure dimensions match
+#         assert x.size(1) <= self.seq_len, f"x.size(1) {x.size(1)} must be <= self.seq_len {self.seq_len}"
+
+#         pe_slice = self.pe[:, :x.shape[1], :]  # Adjust PE to match x's seq_len dimension
+#         print(f"PE slice shape: {pe_slice.shape}")
+
+#         x = x + pe_slice.requires_grad_(False)
+#         x = self.dropout(x)
+
+#         return x  
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model: int, seq_len: int, dropout: float) -> None:
+        super().__init__()
         self.d_model = d_model
         self.seq_len = seq_len
         self.dropout = nn.Dropout(dropout)
-        # need pos embeddings of (seq_len,d_model)
+        # Create a matrix of shape (seq_len, d_model)
+        pe = torch.zeros(seq_len, d_model)
+        # Create a vector of shape (seq_len)
+        position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1) # (seq_len, 1)
+        # Create a vector of shape (d_model)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)) # (d_model / 2)
+        # Apply sine to even indices
+        pe[:, 0::2] = torch.sin(position * div_term) # sin(position * (10000 ** (2i / d_model))
+        # Apply cosine to odd indices
+        pe[:, 1::2] = torch.cos(position * div_term) # cos(position * (10000 ** (2i / d_model))
+        # Add a batch dimension to the positional encoding
+        pe = pe.unsqueeze(0) # (1, seq_len, d_model)
+        # Register the positional encoding as a buffer
+        self.register_buffer('pe', pe)
 
-        pe = torch.zeros(seq_len,d_model)
+    def forward(self, x):
+        # print(f"x.shape: {x.shape}")
+        # print(f"self.pe.shape: {self.pe.shape}")
+        # print(f"x.shape[1]: {x.shape[1]}")
+        # print(f"self.pe[:, :x.shape[1], :].shape: {self.pe[:, :x.shape[1], :].shape}")
 
-        pos = torch.arange(0,seq_len,dtype = torch.float).unsqueeze(1)
-        
-        div = torch.exp(torch.arange(0,d_model,2).float()*(-math.log(10000.0)/d_model))
+        x = x + self.pe[:, :x.shape[1], :].requires_grad_(False) # (batch, seq_len, d_model)
+        return self.dropout(x)
 
-        pe[:,0::2] = torch.sin(pos*div)
-        pe[:,1::2] = torch.cos(pos*div)
-        # print(f"\n PE:{pe}\n")
-        pe = pe.unsqueeze(0) #(1,seq_len,d_model)
-        self.register_buffer('pe',pe)
-
-    def forward(self,x):
-        x = x + (self.pe[:,:x.shape[1],:]).requires_grad_(False)
-        x = self.dropout(x)
-        return x
     
 class LayerNorm(nn.Module):
     def __init__(self,eps:float = 1e-6)->None:
         super().__init__()
 
         self.eps = eps
-        self.alpha = nn.Parameter(torch.one(1))
-        self.beta = nn.Parameter(torch.one(0))
+        self.alpha = nn.Parameter(torch.ones(1))
+        self.beta = nn.Parameter(torch.zeros(1))
 
     def forward(self,x):
         mean = x.mean(dim = -1,keepdim = True)
         std = x.std(dim = -1,keepdim=True)
 
-        x = self.alpha((x - mean)/(std + self.eps)) + self.beta
+        x = self.alpha*((x - mean)/(std + self.eps)) + self.beta
         return x
     
 class FFN(nn.Module):
@@ -124,9 +168,10 @@ class MultiHeadAttn(nn.Module):
 
         x,attn_scores = MultiHeadAttn.attn(Q,K,V,mask,self.dropout)     
         #(batch,h,seq_len,d_k) --> (batch,seq,h,d_k)
-        x = x.transpose(1,2).contiguous().view(x.shape[0],-1,self.h,self.d_k)
+        # x = x.transpose(1,2).contiguous().view(x.shape[0],-1,self.h,self.d_k)
+        # x = self.w_o(x)
+        x = x.transpose(1, 2).contiguous().view(x.shape[0], x.shape[2], self.h * self.d_k)
         x = self.w_o(x)
-        
         return x
     
 class ResidualConn(nn.Module):
@@ -134,7 +179,7 @@ class ResidualConn(nn.Module):
         super().__init__()
 
         self.dropout = nn.Dropout(dropout)
-        self.Lnorm = nn.LayerNorm()
+        self.Lnorm = LayerNorm()
 
     def forward(self,x,sublayer):
         return x+self.dropout(sublayer(self.Lnorm(x)))
@@ -224,17 +269,18 @@ class Transformer(nn.Module):
         self.tgt_pos = tgt_pos
         self.projection = projection
 
-    def encoder(self,src,src_mask,):
+    def encode(self,src,src_mask,):
         src = self.src_embed(src)
         src = self.src_pos(src)
-
+        # print(f"\nAfter pos encoder:{src.shape}\n")
         return self.encoder(src,src_mask)
     
     def decode(self,encoder_output,src_mask,tgt,tgt_mask):
         tgt = self.tgt_embed(tgt)
         tgt = self.tgt_pos(tgt)
+        # print(f"\nAfter dec encoder:{tgt.shape}\n")
 
-        return self.decode(tgt,encoder_output,src_mask,tgt_mask)
+        return self.decoder(tgt,encoder_output,src_mask,tgt_mask)
 
     def proj(self,x):
         return self.projection(x)

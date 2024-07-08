@@ -4,8 +4,7 @@ from tokenizers.models import WordLevel
 from tokenizers.trainers import WordLevelTrainer 
 from tokenizers.pre_tokenizers import Whitespace
 from datasets import load_dataset
-
-
+import json
 
 from torch.utils.data import Dataset,random_split,DataLoader
 import os
@@ -27,10 +26,6 @@ def causal_mask(size):
 
 from torch.utils.data import Dataset,random_split
 import os
-
-def causal_mask(size):
-    mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
-    return mask == 0
 
 class Translation(Dataset):
     
@@ -60,10 +55,10 @@ class Translation(Dataset):
         return len(self.ds)
     
     def __getitem__(self,idx):
-        src_tgt_pair = self.ds['translation'][idx]
-        
-        src_txt = src_tgt_pair['translation'][self.src_lang]
-        tgt_txt = src_tgt_pair['translation'][self.tgt_lang]
+        src_tgt_pair = self.ds[idx]['translation']
+        # print(f"\nsrc_tgt_pair:{src_tgt_pair}\n")
+        src_txt = src_tgt_pair[self.src_lang]
+        tgt_txt = src_tgt_pair[self.tgt_lang]
         
         enc_inp_token = self.token_src.encode(src_txt).ids 
         dec_inp_token = self.token_tgt.encode(tgt_txt).ids
@@ -96,6 +91,7 @@ class Translation(Dataset):
                 torch.tensor([self.pad_token]*dec_paddings,dtype = torch.int64)
         ],dim = 0)
         
+        # print(f"\nencoder_input:{encoder_input.shape}\ndecoder_input:{decoder_input.shape}\nlabel:{label.shape}")
         assert encoder_input.size(0) == self.seq_len
         assert decoder_input.size(0) == self.seq_len
         assert label.size(0) == self.seq_len
@@ -113,7 +109,6 @@ class Translation(Dataset):
 def get_all_sentences(ds,lang):
     for item in ds:
         yield item['translation'][lang]
-
 
 def get_or_build_tokenizer(config,ds,lang):
 
@@ -137,17 +132,27 @@ def get_or_build_tokenizer(config,ds,lang):
 
 
 def get_data(config):
-    
-    dataset = load_dataset("open_subtitles",lang1=config['lang_src'],lang2=config['lang_tgt'],split= 'train',streaming=True)
+    os.makedirs("data",exist_ok=True)
+    if os.path.exists('data/train.json'):
+        with open('data/train.json', 'r') as f:
+            dataset = [json.loads(line) for line in f]
+    else:
+        dataset = load_dataset("open_subtitles", lang1=config['lang_src'], lang2=config['lang_tgt'], split='train',trust_remote_code=True).select(range(5000))
+        
+        # Save the dataset to a JSON file
+        # with open('data/train.json', 'w') as f:
+        #     for example in dataset:
+        #         f.write(json.dumps(example) + '\n')
      
     tok_src =  get_or_build_tokenizer(config,dataset,config['lang_src'])
     tok_tgt =  get_or_build_tokenizer(config,dataset,config['lang_tgt'])
     
-    train_size = int(0.85*len(dataset))
+    train_size = int(0.750*len(dataset))
     val_size = len(dataset) - train_size
     
     train,val = random_split(dataset,[train_size,val_size])
-
+    # print("\nFirst 5 training examples:", [train[i]['translation'] for i in range(5)])
+    # print("\nFirst 5 validation examples:", [val[i] for i in range(5)])
     train_ds = Translation(data = train,
                 token_src = tok_src ,
                 token_tgt = tok_tgt,
