@@ -126,24 +126,32 @@ def get_or_build_tokenizer(config,ds,lang):
 
     return tokenizer
 
-
-# dataset = load_dataset("open_subtitles",lang1=config['lang_src'],lang2=config['lang_tgt'],split= 'val',trust_remote_code=True)
-# dataset['translation'][:5]
-
-
 def get_data(config):
-    os.makedirs("data",exist_ok=True)
-    if os.path.exists('data/train.json'):
-        with open('data/train.json', 'r') as f:
+    os.makedirs("data", exist_ok=True)
+
+    # Define the file path for the saved dataset, including language names
+    file_path = f"data/train_{config['lang_src']}_to_{config['lang_tgt']}.json"
+
+    #Load if the dataset is already saved locally
+    if os.path.exists(file_path):
+        print(f"Loading dataset from local file: {file_path}")
+        with open(file_path, 'r') as f:
             dataset = [json.loads(line) for line in f]
     else:
-        dataset = load_dataset("open_subtitles", lang1=config['lang_src'], lang2=config['lang_tgt'], split='train',trust_remote_code=True).select(range(5000))
-        
-        # Save the dataset to a JSON file
-        # with open('data/train.json', 'w') as f:
-        #     for example in dataset:
-        #         f.write(json.dumps(example) + '\n')
-     
+        print(f"Loading dataset from Hugging Face for {config['lang_src']} to {config['lang_tgt']}...")
+        dataset = load_dataset(
+            "open_subtitles", 
+            lang1=config['lang_src'], 
+            lang2=config['lang_tgt'], 
+            split='train',
+            trust_remote_code=True
+        ).select(range(config['data_len']))  
+
+        with open(file_path, 'w') as f:
+            for example in dataset:
+                f.write(json.dumps(example) + '\n')
+        print(f"Dataset saved to {file_path}")
+
     tok_src =  get_or_build_tokenizer(config,dataset,config['lang_src'])
     tok_tgt =  get_or_build_tokenizer(config,dataset,config['lang_tgt'])
     
@@ -151,8 +159,6 @@ def get_data(config):
     val_size = len(dataset) - train_size
     
     train,val = random_split(dataset,[train_size,val_size])
-    # print("\nFirst 5 training examples:", [train[i]['translation'] for i in range(5)])
-    # print("\nFirst 5 validation examples:", [val[i] for i in range(5)])
     train_ds = Translation(data = train,
                 token_src = tok_src ,
                 token_tgt = tok_tgt,
