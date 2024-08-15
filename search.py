@@ -28,6 +28,33 @@ def greedy_decode(model,source,source_mask,token_src,token_tgt,max_len,device):
 
     return decoder_inp.squeeze(0)
 
+
+def greedy_decode(model,source,source_mask,token_src,token_tgt,max_len,device):
+    sos_idx = token_src.token_to_id('[SOS]')
+    eos_idx = token_tgt.token_to_id('[EOS]')
+
+    #compute the encoder output and use it for every decoder 
+    encoder_out = model.encode(source,source_mask)
+    decoder_inp = torch.empty(1,1).fill_(sos_idx).type_as(source).to(device)
+
+    while True:
+        if decoder_inp.size(1) == max_len:
+            break
+
+        #build mask for the target not to see future words
+
+        decoder_mask = causal_mask(decoder_inp.size(1)).type_as(source).to(device)
+        out = model.decode(encoder_out,source_mask,decoder_inp,decoder_mask)
+
+        prob = model.proj(out[:,-1])
+        _,next_word = torch.max(prob,dim = 1)
+        decoder_inp = torch.cat([decoder_inp,torch.empty(1,1).type_as(source).fill_(next_word.item()).to(device)],dim = 1 )
+
+        if next_word  == eos_idx:
+            break
+
+    return decoder_inp.squeeze(0)
+
 def beam_search(model,beam_size,source,source_mask,token_src,token_tgt,max_len,device):
     sos_idx = token_src.token_to_id('[SOS]')
     eos_idx = token_tgt.token_to_id('[EOS]')

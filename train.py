@@ -5,6 +5,8 @@ from tqdm import tqdm
 from torchmetrics.text import CharErrorRate, WordErrorRate, BLEUScore
 from search import greedy_decode
 import gc
+import torchmetrics
+from search import *
 import torch.utils.tensorboard
 from  torch.utils.tensorboard import SummaryWriter
 
@@ -29,6 +31,8 @@ def validation(model,valid_ds,token_src,token_tgt,max_len,device,print_msg,metri
 
             model_out = greedy_decode(model,encoder_inp,encoder_mask,token_src,token_tgt,max_len,device)
 
+            source = batch['src_text'][0]
+            target = batch['tgt_text'][0]
             source = batch['src_text'][0]
             target = batch['tgt_text'][0]
             model_out_txt = token_tgt.decode(model_out.detach().cpu().numpy())
@@ -60,6 +64,18 @@ def validation(model,valid_ds,token_src,token_tgt,max_len,device,print_msg,metri
 
     print_msg(f"BLEU:{bleu}\tWER:{wer}\tCER:{cer}")
     gc.collect()
+    metric = torchmetrics.CharErrorRate()
+    cer = metric(predicted, expected_txt)
+
+    # Compute the word error rate
+    metric = torchmetrics.WordErrorRate()
+    wer = metric(predicted, expected_txt)
+
+    # Compute the BLEU metric
+    metric = torchmetrics.BLEUScore()
+    bleu = metric(predicted, expected_txt)
+
+    print_msg(f"BLEU:{bleu}\tWER:{wer}\tCER:{cer}")
 
 def train(config):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -72,7 +88,7 @@ def train(config):
     model = get_model(config,token_src.get_vocab_size(),token_tgt.get_vocab_size(),)
     model = model.to(device)
 
-    writer = SummaryWriter(config['experiment_name'])
+    # writer = SummaryWriter(config['experiment_name'])
 
     optimizer = torch.optim.Adam(model.parameters(),lr = config['lr'],eps= 1e-9)
 
@@ -118,8 +134,8 @@ def train(config):
 
             batch_iterator.set_postfix({f"Loss:":f"{loss.item():6.3f}"})
 
-            writer.add_scalar('train_loass',loss.item(),global_step)
-            writer.flush()
+            # writer.add_scalar('train_loass',loss.item(),global_step)
+            # writer.flush()
 
             loss.backward()
 
