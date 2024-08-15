@@ -5,7 +5,7 @@ This repository hosts a text language translation model built using Transformer 
 
 
 ## Image
-![Model Architecture](props\transformers.png)
+![Model Architecture](props/transformers.png)
 
 ## Model Architecture
 The model is built on the Transformer architecture, which includes:
